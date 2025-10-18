@@ -45,6 +45,7 @@ tr {
     grid-template-columns: repeat(3, 1fr);
     width: 100%;
     padding-block: 10px;
+    border-top: 1px solid #333;
     td {
       border: none;
       display: block;
