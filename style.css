@@ -80,7 +80,7 @@ tr {
   /* / .common-data__row--preview */
 
   [colspan='6'],
-  .common-data__row--detail {
+  .common-data__row--detail.show {
     display: block;
     td,
     th {
