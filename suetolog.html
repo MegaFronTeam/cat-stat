@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<!-- saved from url=(0026)https://stats.rektify.app/ -->
+<html lang="ru">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Suetolog</title>
+    <link rel="icon" type="image/x-icon" href="https://stats.rektify.app/favicon.ico" />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2em;
+        background: #181a20;
+        color: #f1f1f1;
+      }
+      .container {
+        background: #22242c;
+        padding: 2em;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px #0008;
+        position: relative;
+      }
+      h1 {
+        color: #f1f1f1;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 1em;
+        background: #181a20;
+        color: #f1f1f1;
+      }
+      th,
+      td {
+        border: 1px solid #333;
+        padding: 0.5em;
+        text-align: left;
+      }
+      th {
+        background: #23262f;
+        color: #f1f1f1;
+      }
+      .details {
+        display: none;
+      }
+      .show {
+        display: table-row;
+      }
+      button {
+        padding: 0.2em 0.7em;
+        background: #23262f;
+        color: #f1f1f1;
+        border: 1px solid #333;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #393c49;
+      }
+      a,
+      a:visited {
+        color: #1e90ff;
+        text-decoration: underline;
+      }
+      .details table {
+        width: 100%;
+        margin: -1px 0 10px -1px;
+        border-spacing: 0;
+        border-collapse: collapse;
+        background: #23262f;
+      }
+      .details table th,
+      .details table td {
+        padding: 0.5em;
+        border: 1px solid #616161;
+      }
+      .details {
+        padding: 0;
+        margin: 0;
+      }
+      .details > td {
+        padding: 0;
+        border: none;
+      }
+      .node-name-btn-wrapper {
+        position: absolute;
+        top: 2em;
+        right: 2em;
+        z-index: 10;
+      }
+      .filter-container {
+        margin: 1em 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .filter-select {
+        padding: 8px 60px 8px 12px;
+        background: #23262f;
+        color: #f1f1f1;
+        border: 1px solid #333;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        appearance: none;
+        background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f1f1f1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        background-size: 16px;
+      }
+      .filter-select:focus {
+        outline: none;
+        border-color: #1e90ff;
+      }
+      /* Mobile tweaks */
+      @media (max-width: 600px) {
+        .alts-waiting a {
+          font-size: 12px;
+          line-height: 1.2;
+        }
+        .alts-waiting {
+          font-size: 12px;
+        }
+      }
+    </style>
+    <link rel="stylesheet" href="style.css" />
+    <script>
+      function isUnlocked() {
+        return localStorage.getItem('node-names-unlocked') === 'true';
+      }
+      // Флаг хеджирования теперь отдается сервером через /data
+      function isHedgeEnabled() {
+        return window.__ALLOW_HARD_HEDGE__ === true;
+      }
+      function getRowKey(node_name, hide_name) {
+        return isUnlocked() ? node_name : hide_name;
+      }
+      // --- Node name reveal logic ---
+      async function showNodeNames() {
+        const password = prompt('Введите пароль для показа node name:');
+        if (!password) return;
+        const formData = new FormData();
+        formData.append('password', password);
+        const resp = await fetch('/unlock', { method: 'POST', body: formData });
+        if (!resp.ok) {
+          alert('Ошибка сервера!');
+          return;
+        }
+        const data = await resp.json();
+        if (data.unlocked) {
+          document.querySelectorAll('.node-name-cell').forEach((cell) => {
+            const nodeName = cell.getAttribute('data-node-name');
+            cell.textContent = nodeName;
+            cell.classList.add('unlocked');
+          });
+          localStorage.setItem('node-names-unlocked', 'true');
+          document.getElementById('show-node-names-btn').style.display = 'none';
+          // Пересохраняем open-details с node_name вместо hide_name
+          let openDetails = [];
+          try {
+            openDetails = JSON.parse(localStorage.getItem('open-details')) || [];
+          } catch (e) {
+            openDetails = [];
+          }
+          // Перезаписываем openDetails на node_name
+          let newOpenDetails = [];
+          document.querySelectorAll('.node-name-cell').forEach((cell) => {
+            const nodeName = cell.getAttribute('data-node-name');
+            const hideName = cell.getAttribute('data-hide-name');
+            if (openDetails.includes(hideName)) newOpenDetails.push(nodeName);
+          });
+          localStorage.setItem('open-details', JSON.stringify(newOpenDetails));
+        } else {
+          alert('Неверный пароль!');
+        }
+      }
+
+      // При загрузке страницы проверяем сохранённые пароли
+      window.addEventListener('DOMContentLoaded', function () {
+        const unlocked = isUnlocked();
+        document.querySelectorAll('.node-name-cell').forEach((cell) => {
+          const nodeName = cell.getAttribute('data-node-name');
+          const hideName = cell.getAttribute('data-hide-name') || 'hide_name';
+          if (unlocked) {
+            cell.textContent = nodeName;
+            cell.classList.add('unlocked');
+          } else {
+            cell.textContent = hideName;
+          }
+        });
+        // Восстановление открытых details
+        restoreOpenDetails();
+        // Восстанавливаем фильтр бирж из localStorage
+        const savedFilter = localStorage.getItem('exchange-filter') || 'all';
+        const filterSelect = document.getElementById('exchange-filter');
+        if (filterSelect) {
+          filterSelect.value = savedFilter;
+        }
+        // Восстанавливаем позицию скролла
+        const savedScrollPosition = localStorage.getItem('scroll-position');
+        if (savedScrollPosition) {
+          window.scrollTo(0, parseInt(savedScrollPosition));
+        }
+        // Проверяем статус hard hedge при загрузке страницы
+        updateTable();
+      });
+
+      // Сохраняем позицию скролла при обновлении страницы
+      window.addEventListener('beforeunload', function () {
+        localStorage.setItem('scroll-position', window.scrollY);
+      });
+
+      function restoreOpenDetails() {
+        // Читаем ранее сохранённые открытые строки (глобально, независимо от фильтра)
+        let savedOpen = [];
+        try {
+          savedOpen = JSON.parse(localStorage.getItem('open-details')) || [];
+        } catch (e) {
+          savedOpen = [];
+        }
+        // Объединяем с текущими открытыми (в рамках текущего рендера)
+        const sessionOpen = Array.isArray(lastOpenDetails) ? lastOpenDetails : [];
+        const merged = Array.from(new Set([...savedOpen, ...sessionOpen]));
+        // Применяем только к строкам, присутствующим в DOM сейчас
+        document.querySelectorAll('tr.details').forEach((row) => {
+          const key = row.getAttribute('data-row-key');
+          if (merged.includes(key)) row.classList.add('show');
+        });
+        // Обновляем сохранённый список объединённым множеством (не удаляем скрытые другим фильтром)
+        localStorage.setItem('open-details', JSON.stringify(merged));
+      }
+
+      function toggleDetails(node_name, hide_name) {
+        const key = getRowKey(node_name, hide_name);
+        var row = document.querySelector('tr.details[data-row-key="' + key + '"]');
+        let savedOpen = [];
+        try {
+          savedOpen = JSON.parse(localStorage.getItem('open-details')) || [];
+        } catch (e) {
+          savedOpen = [];
+        }
+        const set = new Set(savedOpen);
+        if (row.classList.contains('show')) {
+          row.classList.remove('show');
+          set.delete(key);
+        } else {
+          row.classList.add('show');
+          set.add(key);
+        }
+        localStorage.setItem('open-details', JSON.stringify(Array.from(set)));
+      }
+
+      // --- Live table update ---
+      let countdownInterval = null;
+      let lastOpenDetails = [];
+      function startCountdown(seconds) {
+        clearInterval(countdownInterval);
+        let secondsLeft = seconds;
+        document.getElementById('countdown').textContent = secondsLeft;
+        countdownInterval = setInterval(function () {
+          secondsLeft--;
+          if (secondsLeft <= 0) secondsLeft = 0;
+          document.getElementById('countdown').textContent = secondsLeft;
+        }, 1000);
+      }
+
+      function getCurrentlyOpenDetails() {
+        // Собирает открытые строки по data-row-key
+        return Array.from(document.querySelectorAll('tr.details.show')).map((row) =>
+          row.getAttribute('data-row-key'),
+        );
+      }
+
+      function updateNodesTable(nodes, alt_volatility) {
+        const table = document.querySelector('table');
+        if (!table) return;
+        // Сохраняем открытые строки ПЕРЕД удалением!
+        lastOpenDetails = getCurrentlyOpenDetails();
+        while (table.rows.length > 1) table.deleteRow(1);
+        const unlocked = isUnlocked();
+        const hedgeEnabled = isHedgeEnabled();
+
+        // Получаем текущий фильтр (нормализуем к lowercase)
+        const rawFilter = document.getElementById('exchange-filter')?.value || 'all';
+        const currentFilter = (rawFilter || 'all').toLowerCase();
+
+        // Подсветка тикеров по биржам отключена
+        for (const [node_name, data] of Object.entries(nodes)) {
+          // Применяем фильтр по бирже (по нормализованному значению)
+          const nodeExchangeNorm = (data.exchange || '').toLowerCase();
+          if (currentFilter !== 'all' && nodeExchangeNorm !== currentFilter) {
+            continue;
+          }
+          const hide_name = data.hide_name;
+          const key = getRowKey(node_name, hide_name);
+          // Основная строка
+          const tr = table.insertRow();
+          const baseUrl =
+            data.exchange && nodeExchangeNorm === 'bybit'
+              ? 'https://www.bybit.com/trade/usdt/'
+              : 'https://www.binance.com/ru/futures/';
+          tr.innerHTML = `
+                    <td class="node-name-cell" data-node-name="${
+                      unlocked ? node_name : ''
+                    }" data-hide-name="${hide_name}">${unlocked ? node_name : hide_name}</td>
+                    <td>${data.exchange}</td>
+                    <td>${data.orders_count}</td>
+                    <td class="alts-waiting">
+                        <span style="font-weight:bold;">${
+                          data.alts_waiting.length
+                        } symbols</span><br>
+                        ${data.alts_waiting
+                          .map((alt) => {
+                            return `<a href="${baseUrl}${alt}" target=_blank>${alt}</a>${
+                              alt_volatility[alt] !== undefined && alt_volatility[alt] !== null
+                                ? ` (${alt_volatility[alt]}%)`
+                                : ''
+                            }`;
+                          })
+                          .join(', ')}
+                    </td>
+                    <td>${data.alts_working.length}</td>
+                    <td><button onclick="toggleDetails('${node_name}', '${hide_name}')">Show</button></td>
+                `;
+          // Детальная строка
+          const detailsTr = table.insertRow();
+          detailsTr.id = unlocked ? `details-${node_name}` : `details-${hide_name}`;
+          detailsTr.className = 'details';
+          detailsTr.setAttribute('data-row-key', key);
+          detailsTr.innerHTML = `<td colspan="6">${
+            data.alts_working && data.alts_working.length > 0
+              ? `<table>
+                        <tr>
+                            <th>Symbol</th><th>Open Time</th><th>Average</th><th>Step</th><th>Side</th><th>Order size</th><th>First Order Price</th><th>Last Order Price</th><th>Entry Orders Count</th><th>PNL</th><th>TP Price</th><th>Entry Price</th><th>Size</th><th>Liquidation</th>
+                        </tr>
+                        ${data.alts_working
+                          .map(
+                            (alt) => `
+                            <tr>
+                                <td>
+                                    <a href="${baseUrl}${alt.symbol}" target=_blank>${
+                              alt.symbol
+                            }</a>
+                                    ${
+                                      hedgeEnabled
+                                        ? `<input type="checkbox" class="hh-checkbox" data-node="${node_name}" data-ticker="${alt.symbol}" data-side="${alt.side}" onchange="onHedgeToggle(this)" style="margin-right:5px;">`
+                                        : ''
+                                    }
+                                    ${
+                                      hedgeEnabled
+                                        ? `<button style="margin-left:6px;" onclick="onClosePosition('${node_name}', '${alt.symbol}', '${alt.side}')">Close</button>`
+                                        : ''
+                                    }
+                                </td>
+                                <td>${alt.open_time}</td>
+                                <td>${alt.average}%</td>
+                                <td>${alt.step}%</td>
+                                <td>${alt.side}</td>
+                                <td>${alt.qty}$</td>
+                                <td>${alt.first_order_price}</td>
+                                <td>${alt.last_order_price}</td>
+                                <td>${alt.entry_orders_count}</td>
+                                <td>${alt.pnl}$</td>
+                                <td>${alt.tp_price}</td>
+                                <td>${alt.entry_price}</td>
+                                <td>${alt.size}$</td>
+                                <td>${alt.liquidation}</td>
+                            </tr>
+                        `,
+                          )
+                          .join('')}
+                    </table>`
+              : `<p style="padding-left: 2em;"> Currently there are no opened positions</p>`
+          }</td>`;
+        }
+        // После перерисовки восстанавливаем show
+        restoreOpenDetails();
+      }
+
+      function restoreHedgeCheckboxes() {
+        const state = window.__HARD_HEDGE_STATE__ || {};
+        document.querySelectorAll('input.hh-checkbox').forEach((cb) => {
+          const node = cb.getAttribute('data-node');
+          const ticker = cb.getAttribute('data-ticker');
+          const side = cb.getAttribute('data-side');
+          const list = state[node] || [];
+          const found = list.find((x) => x.ticker === ticker && x.positionSide === side);
+          cb.checked = !!(found && found.hard_hedge);
+        });
+      }
+
+      async function onHedgeToggle(el) {
+        const node = el.getAttribute('data-node');
+        const ticker = el.getAttribute('data-ticker');
+        const side = el.getAttribute('data-side');
+        const enabled = !!el.checked;
+        try {
+          await fetch('/api/hard-hedge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              node_name: node,
+              ticker: ticker,
+              positionSide: side,
+              hard_hedge: enabled,
+            }),
+          });
+        } catch (e) {}
+      }
+
+      async function onClosePosition(nodeName, symbol, positionSide) {
+        try {
+          await fetch('/api/close-requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              node_name: nodeName,
+              positions: [{ symbol: symbol, positionSide: positionSide }],
+            }),
+          });
+        } catch (e) {}
+      }
+
+      function updateExchangeFilter(nodes) {
+        const filterSelect = document.getElementById('exchange-filter');
+        if (!filterSelect) return;
+
+        // Собираем уникальные биржи (нормализуем к lowercase для value)
+        const exchanges = new Map(); // key: lower, value: original (first seen)
+        for (const [node_name, data] of Object.entries(nodes || {})) {
+          const orig = data.exchange;
+          if (!orig) continue;
+          const lower = String(orig).toLowerCase();
+          if (!exchanges.has(lower)) exchanges.set(lower, orig);
+        }
+        // Фолбэк: если не удалось собрать из данных — пробуем получить из DOM (вторая колонка)
+        if (exchanges.size === 0) {
+          document.querySelectorAll('table tr').forEach((tr, idx) => {
+            if (idx === 0) return; // пропускаем заголовок
+            const td = tr.children && tr.children[1];
+            if (td && td.textContent) {
+              const orig = td.textContent.trim();
+              const lower = orig.toLowerCase();
+              if (orig) exchanges.set(lower, orig);
+            }
+          });
+        }
+
+        // Сохраняем текущее значение (нормализуем)
+        const currentValue = (filterSelect.value || 'all').toLowerCase();
+
+        // Очищаем и заполняем опции
+        filterSelect.innerHTML = '<option value="all">All exchanges</option>';
+        const sorted = Array.from(exchanges.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+        for (const [lower, orig] of sorted) {
+          filterSelect.innerHTML += `<option value="${lower}">${orig}</option>`;
+        }
+
+        // Восстанавливаем значение из localStorage или текущее (оба нормализованные)
+        const savedFilter = (
+          localStorage.getItem('exchange-filter') ||
+          currentValue ||
+          'all'
+        ).toLowerCase();
+        filterSelect.value = savedFilter;
+      }
+
+      function onExchangeFilterChange() {
+        const filterSelect = document.getElementById('exchange-filter');
+        if (filterSelect) {
+          // Сохраняем нормализованное значение
+          localStorage.setItem('exchange-filter', (filterSelect.value || 'all').toLowerCase());
+          // Перерисовываем таблицу с новым фильтром без рефетча, чтобы сохранить открытые строки
+          if (window.__LATEST_NODES__) {
+            const currentScrollPosition = window.scrollY;
+            updateNodesTable(window.__LATEST_NODES__, window.__LATEST_ALT_VOL__ || {});
+            if (isHedgeEnabled()) restoreHedgeCheckboxes();
+            setTimeout(() => {
+              window.scrollTo(0, currentScrollPosition);
+            }, 10);
+          } else {
+            updateTable();
+          }
+        }
+      }
+
+      async function updateTable() {
+        try {
+          const resp = await fetch('/data');
+          if (!resp.ok) return;
+          const data = await resp.json();
+          window.__HARD_HEDGE_STATE__ = data.hard_hedge || {};
+          window.__ALLOW_HARD_HEDGE__ = !!data.allow_hard_hedge;
+
+          // Обновляем фильтр бирж
+          updateExchangeFilter(data.nodes);
+
+          // Сохраняем текущую позицию скролла перед обновлением
+          const currentScrollPosition = window.scrollY;
+          localStorage.setItem('scroll-position', currentScrollPosition);
+
+          updateNodesTable(data.nodes, data.alt_volatility);
+          // Устанавливаем состояние чекбоксов только если Hedge разрешён (BlindMoron)
+          if (isHedgeEnabled()) restoreHedgeCheckboxes();
+
+          // Восстанавливаем позицию скролла после обновления
+          setTimeout(() => {
+            window.scrollTo(0, currentScrollPosition);
+          }, 10);
+
+          document.getElementById('last-update').textContent = new Date().toLocaleString();
+          startCountdown(5);
+        } catch (e) {}
+      }
+      // Экспортируем функцию в глобальную область видимости
+      window.updateTable = updateTable;
+      setInterval(updateTable, 5000);
+    </script>
+    <style id="dark-reader-style" type="text/css">
+      @media screen {
+        html {
+          -webkit-transition: -webkit-filter 300ms linear;
+        }
+      }
+    </style>
+    <style type="text/css">
+      @import url('https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,100..900;1,100..900&display=swap');
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="node-name-btn-wrapper">
+        <button id="show-node-names-btn" onclick="showNodeNames()" style="display: none">
+          Show node names (password required)
+        </button>
+      </div>
+      <p style="margin: 5px">
+        Live trade feed: <a href="https://t.me/rektifydascam" target="_blank">@rektifydascam</a>
+      </p>
+      <p style="margin: 5px">
+        Public stats:
+        <a href="https://datalens.yandex/i3zkl5sp6n1a3" target="_blank"
+          >https://datalens.yandex/i3zkl5sp6n1a3</a
+        >
+      </p>
+      <p style="margin: 5px">
+        More about the bot and terms:
+        <a href="https://promo.rektify.app/suetolog" target="_blank"
+          >https://promo.rektify.app/suetolog</a
+        >
+      </p>
+      <p style="margin: 5px; font-size: 0.95em; color: #aaa">
+        Last auto-update: <span id="last-update">10/18/2025, 10:46:52 AM</span><br />Refresh in:
+        <span id="countdown">3</span> seconds
+      </p>
+
+      <div class="filter-container">
+        <select id="exchange-filter" class="filter-select" onchange="onExchangeFilterChange()">
+          <option value="all">All exchanges</option>
+          <option value="binance">Binance</option>
+        </select>
+      </div>
+      <table class="common-data">
+        <thead class="common-data__thead">
+          <tr>
+            <th>Node Name</th>
+            <th>Exchange</th>
+            <th>Orders Count</th>
+            <th>Alts Waiting</th>
+            <th>Positions</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+
+        <tbody class="common-data__tbody">
+          <tr class="common-data__row common-data__row--preview">
+            <td class="node-name-cell" data-node-name="EtH_2_O" data-hide-name="User_14">
+              EtH_2_O
+            </td>
+            <td data-title="Exchange">Binance</td>
+            <td data-title="Orders Count">300</td>
+            <td class="alts-waiting" data-title="Alts Waiting">
+              <span style="font-weight: bold">12 symbols</span><br />
+              <a href="https://www.binance.com/ru/futures/KGENUSDT" target="_blank">KGENUSDT</a>
+              (1.07%),
+              <a href="https://www.binance.com/ru/futures/BASUSDT" target="_blank">BASUSDT</a>
+              (0.99%),
+              <a href="https://www.binance.com/ru/futures/EVAAUSDT" target="_blank">EVAAUSDT</a>
+              (1.38%),
+              <a href="https://www.binance.com/ru/futures/XPINUSDT" target="_blank">XPINUSDT</a>
+              (1.05%),
+              <a href="https://www.binance.com/ru/futures/SLERFUSDT" target="_blank">SLERFUSDT</a>
+              (4.55%),
+              <a href="https://www.binance.com/ru/futures/DAMUSDT" target="_blank">DAMUSDT</a>
+              (0.97%),
+              <a href="https://www.binance.com/ru/futures/AGTUSDT" target="_blank">AGTUSDT</a>
+              (0.75%),
+              <a href="https://www.binance.com/ru/futures/4USDT" target="_blank">4USDT</a> (0.8%),
+              <a href="https://www.binance.com/ru/futures/USELESSUSDT" target="_blank"
+                >USELESSUSDT</a
+              >
+              (0.72%),
+              <a href="https://www.binance.com/ru/futures/YBUSDT" target="_blank">YBUSDT</a> (0.7%),
+              <a href="https://www.binance.com/ru/futures/PHBUSDT" target="_blank">PHBUSDT</a>
+              (1.39%),
+              <a href="https://www.binance.com/ru/futures/PUNDIXUSDT" target="_blank">PUNDIXUSDT</a>
+              (1%)
+            </td>
+            <td data-title="Positions">0</td>
+            <td>
+              <button onclick="toggleDetails(&#39;EtH_2_O&#39;, &#39;User_14&#39;)">Show</button>
+            </td>
+          </tr>
+          <tr
+            id="details-EtH_2_O"
+            class="common-data__row common-data__row--detail details"
+            data-row-key="EtH_2_O"
+          >
+            <td colspan="6">
+              <p style="padding-left: 2em">Currently there are no opened positions</p>
+            </td>
+          </tr>
+          <tr class="common-data__row common-data__row--preview">
+            <td class="node-name-cell" data-node-name="Bear_BFG" data-hide-name="User_16">
+              Bear_BFG
+            </td>
+            <td data-title="Exchange">Binance</td>
+            <td data-title="Orders Count">300</td>
+            <td class="alts-waiting" data-title="Alts Waiting">
+              <span style="font-weight: bold">12 symbols</span><br />
+              <a href="https://www.binance.com/ru/futures/BASUSDT" target="_blank">BASUSDT</a>
+              (0.99%),
+              <a href="https://www.binance.com/ru/futures/KGENUSDT" target="_blank">KGENUSDT</a>
+              (1.07%),
+              <a href="https://www.binance.com/ru/futures/EVAAUSDT" target="_blank">EVAAUSDT</a>
+              (1.38%),
+              <a href="https://www.binance.com/ru/futures/XPINUSDT" target="_blank">XPINUSDT</a>
+              (1.05%),
+              <a href="https://www.binance.com/ru/futures/SLERFUSDT" target="_blank">SLERFUSDT</a>
+              (4.55%),
+              <a href="https://www.binance.com/ru/futures/DAMUSDT" target="_blank">DAMUSDT</a>
+              (0.97%),
+              <a href="https://www.binance.com/ru/futures/4USDT" target="_blank">4USDT</a> (0.8%),
+              <a href="https://www.binance.com/ru/futures/AGTUSDT" target="_blank">AGTUSDT</a>
+              (0.75%),
+              <a href="https://www.binance.com/ru/futures/USELESSUSDT" target="_blank"
+                >USELESSUSDT</a
+              >
+              (0.72%),
+              <a href="https://www.binance.com/ru/futures/YBUSDT" target="_blank">YBUSDT</a> (0.7%),
+              <a href="https://www.binance.com/ru/futures/PHBUSDT" target="_blank">PHBUSDT</a>
+              (1.39%),
+              <a href="https://www.binance.com/ru/futures/PUNDIXUSDT" target="_blank">PUNDIXUSDT</a>
+              (1%)
+            </td>
+            <td data-title="Positions">1</td>
+            <td>
+              <button onclick="toggleDetails(&#39;Bear_BFG&#39;, &#39;User_16&#39;)">Show</button>
+            </td>
+          </tr>
+          <tr
+            id="details-Bear_BFG"
+            class="common-data__row common-data__row--detail details"
+            data-row-key="Bear_BFG"
+          >
+            <td colspan="6">
+              <div class="table-detail-wrap">
+                <table>
+                  <tbody>
+                    <tr>
+                      <th>Symbol</th>
+                      <th>Open Time</th>
+                      <th>Average</th>
+                      <th>Step</th>
+                      <th>Side</th>
+                      <th>Order size</th>
+                      <th>First Order Price</th>
+                      <th>Last Order Price</th>
+                      <th>Entry Orders Count</th>
+                      <th>PNL</th>
+                      <th>TP Price</th>
+                      <th>Entry Price</th>
+                      <th>Size</th>
+                      <th>Liquidation</th>
+                    </tr>
+
+                    <tr>
+                      <td>
+                        <a href="https://www.binance.com/ru/futures/DAMUSDT" target="_blank"
+                          >DAMUSDT</a
+                        >
+                      </td>
+                      <td>2025-10-18 11:42:50</td>
+                      <td>0.97%</td>
+                      <td>0.7275%</td>
+                      <td>SHORT</td>
+                      <td>8$</td>
+                      <td>0.07016</td>
+                      <td>0.07072</td>
+                      <td>7</td>
+                      <td>-0.262$</td>
+                      <td>0.06881</td>
+                      <td>0.06915</td>
+                      <td>-56.34$</td>
+                      <td>6.79013</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          </tr>
+          <tr class="common-data__row common-data__row--preview">
+            <td class="node-name-cell" data-node-name="khal1414" data-hide-name="User_18">
+              khal1414
+            </td>
+            <td data-title="Exchange">Binance</td>
+            <td data-title="Orders Count">300</td>
+            <td class="alts-waiting" data-title="Alts Waiting">
+              <span style="font-weight: bold">12 symbols</span><br />
+              <a href="https://www.binance.com/ru/futures/KGENUSDT" target="_blank">KGENUSDT</a>
+              (1.07%),
+              <a href="https://www.binance.com/ru/futures/BASUSDT" target="_blank">BASUSDT</a>
+              (0.99%),
+              <a href="https://www.binance.com/ru/futures/EVAAUSDT" target="_blank">EVAAUSDT</a>
+              (1.38%),
+              <a href="https://www.binance.com/ru/futures/XPINUSDT" target="_blank">XPINUSDT</a>
+              (1.05%),
+              <a href="https://www.binance.com/ru/futures/SLERFUSDT" target="_blank">SLERFUSDT</a>
+              (4.55%),
+              <a href="https://www.binance.com/ru/futures/DAMUSDT" target="_blank">DAMUSDT</a>
+              (0.97%),
+              <a href="https://www.binance.com/ru/futures/AGTUSDT" target="_blank">AGTUSDT</a>
+              (0.75%),
+              <a href="https://www.binance.com/ru/futures/4USDT" target="_blank">4USDT</a> (0.8%),
+              <a href="https://www.binance.com/ru/futures/USELESSUSDT" target="_blank"
+                >USELESSUSDT</a
+              >
+              (0.72%),
+              <a href="https://www.binance.com/ru/futures/PHBUSDT" target="_blank">PHBUSDT</a>
+              (1.39%),
+              <a href="https://www.binance.com/ru/futures/YBUSDT" target="_blank">YBUSDT</a> (0.7%),
+              <a href="https://www.binance.com/ru/futures/PUNDIXUSDT" target="_blank">PUNDIXUSDT</a>
+              (1%)
+            </td>
+            <td data-title="Positions">1</td>
+            <td>
+              <button onclick="toggleDetails(&#39;khal1414&#39;, &#39;User_18&#39;)">Show</button>
+            </td>
+          </tr>
+          <tr
+            id="details-khal1414"
+            class="common-data__row common-data__row--detail details show"
+            data-row-key="khal1414"
+          >
+            <td colspan="6">
+              <div class="table-detail-wrap">
+                <table>
+                  <tbody>
+                    <tr>
+                      <th class="sticky-element sticky-element--left">Symbol</th>
+                      <th>Open Time</th>
+                      <th>Average</th>
+                      <th>Step</th>
+                      <th>Side</th>
+                      <th>Order size</th>
+                      <th>First Order Price</th>
+                      <th>Last Order Price</th>
+                      <th>Entry Orders Count</th>
+                      <th>PNL</th>
+                      <th>TP Price</th>
+                      <th>Entry Price</th>
+                      <th>Size</th>
+                      <th>Liquidation</th>
+                    </tr>
+
+                    <tr>
+                      <td class="sticky-element sticky-element--left">
+                        <a href="https://www.binance.com/ru/futures/DAMUSDT" target="_blank"
+                          >DAMUSDT</a
+                        >
+                      </td>
+                      <td>2025-10-18 11:42:50</td>
+                      <td>0.97%</td>
+                      <td>0.7275%</td>
+                      <td>SHORT</td>
+                      <td>8$</td>
+                      <td>0.07016</td>
+                      <td>0.07072</td>
+                      <td>7</td>
+                      <td>-0.356$</td>
+                      <td>0.06881</td>
+                      <td>0.06915</td>
+                      <td>-56.44$</td>
+                      <td>5.2387</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>
